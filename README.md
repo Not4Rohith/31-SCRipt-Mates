@@ -1,4 +1,4 @@
-.# Project: Website Audit Core
+# Project: Website Audit Core
 ## Team: 31_SCRipt_Mates
 
 A comprehensive website auditing tool with voice-command functionality, built for the Hackyugma 2K25 hackathon.
