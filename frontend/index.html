@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackyugma Audit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style> 
+        /* Set the new font for the entire page */
+        body { font-family: 'Press Start 2P', cursive; } 
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-950 via-black to-blue-950 text-gray-200 flex flex-col items-center p-8 min-h-screen">
+
+    <h1 class="text-4xl md:text-5xl font-extrabold mb-12 text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-500 to-blue-600">
+        Hackyugma
+    </h1>
+
+    <div class="flex flex-col md:flex-row gap-4 mb-12 w-full max-w-3xl bg-gray-900/60 border border-cyan-700 rounded-2xl p-6 shadow-xl backdrop-blur-lg">
+        <input id="urlInput" type="text" placeholder="Enter URL (e.g., 'google.com')" class="flex-grow px-5 py-3 bg-gray-950 border border-gray-700 rounded-lg focus:outline-none focus:ring-3 focus:ring-lime-400 text-lg placeholder-gray-600 text-lime-300">
+        <button id="micButton" title="Start listening" class="px-5 py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-3xl flex items-center justify-center transition-colors">🎤</button>
+        <button id="auditButton" class="px-8 py-3 bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-bold rounded-lg disabled:bg-gray-800 disabled:text-gray-500 transition-colors text-lg">Execute Audit</button>
+    </div>
+
+    <div id="errorDisplay" class="text-red-500 mb-8 text-xl font-bold tracking-wide"></div>
+
+    <div id="resultsDisplay" class="bg-gray-900/70 backdrop-blur-xl border-2 border-cyan-600 rounded-3xl p-8 w-full max-w-5xl shadow-2xl hidden">
+        </div>
+
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const micButton = document.getElementById('micButton');
+        const auditButton = document.getElementById('auditButton');
+        const errorDisplay = document.getElementById('errorDisplay');
+        const resultsDisplay = document.getElementById('resultsDisplay');
+
+        // --- Function to build the formatted report ---
+        const displayFormattedReport = (data) => {
+            const { url, score, security, seo, performance, accessibility } = data;
+            
+            const a11yIssuesHtml = accessibility.issues.slice(0, 5).map((issue, index) => `
+                <p class="text-red-300 ml-4 text-sm">- [ANOMALY ${index + 1}] ${issue.message}</p>
+            `).join('');
+            const additionalA11y = accessibility.issues.length > 5 ? `<p class="text-gray-500 ml-4 text-sm">...AND ${accessibility.issues.length - 5} ADDITIONAL ANOMALIES.</p>` : '';
+
+            const reportHtml = `
+                <div class="text-center mb-8">
+                    <p class="text-2xl font-bold text-lime-400">OVERALL SCORE: <span class="text-orange-400">${score}/100</span></p>
+                </div>
+                <div class="space-y-6 text-base">
+                    <div class="border border-gray-700 rounded-lg p-4 bg-gray-800/40">
+                        <h3 class="font-bold text-xl text-indigo-400 mb-2">🛡️ SECURITY</h3>
+                        <p>HTTPS Status: <span class="text-green-400">${security.https ? '✅ SECURE' : '❌ INSECURE'}</span></p>
+                        <p>Missing Headers: <span class="text-yellow-400">${security.missing.join(", ") || "None"}</span></p>
+                    </div>
+                    <div class="border border-gray-700 rounded-lg p-4 bg-gray-800/40">
+                        <h3 class="font-bold text-xl text-cyan-400 mb-2">⚡ PERFORMANCE</h3>
+                        <p>Load Time: <span class="text-lime-300">${performance.loadTimeMs} ms</span></p>
+                        <p>Resources: <span class="text-lime-300">${performance.resourceCount}</span></p>
+                        <p>Data Transfer: <span class="text-lime-300">${(performance.totalTransferBytes / 1024).toFixed(1)} KB</span></p>
+                    </div>
+                    <div class="border border-gray-700 rounded-lg p-4 bg-gray-800/40">
+                        <h3 class="font-bold text-xl text-purple-400 mb-2">📈 SEO</h3>
+                        <p>Title Tag: <span class="text-orange-300">${seo.titleText || "MISSING"}</span></p>
+                        <p>Meta Desc: <span class="text-orange-300">${seo.metaDescriptionText ? "Present" : "MISSING"}</span></p>
+                        <p>H1 Count: <span class="text-lime-300">${seo.h1Count}</span></p>
+                    </div>
+                    <div class="border border-gray-700 rounded-lg p-4 bg-gray-800/40">
+                        <h3 class="font-bold text-xl text-fuchsia-400 mb-2">♿ ACCESSIBILITY</h3>
+                        <p>Total Issues: <span class="text-red-400">${accessibility.count}</span></p>
+                        ${a11yIssuesHtml}
+                        ${additionalA11y}
+                    </div>
+                </div>
+                <div class="text-center mt-8">
+                    <button id="pdfButton" class="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 transition-colors text-lg">💾 Download PDF</button>
+                </div>
+            `;
+            resultsDisplay.innerHTML = reportHtml;
+            resultsDisplay.classList.remove('hidden');
+
+            document.getElementById('pdfButton').addEventListener('click', () => {
+                window.open('http://localhost:5000/report.pdf', '_blank');
+            });
+        };
+
+        // --- Main Audit Function ---
+        const runAudit = async () => {
+            auditButton.disabled = true;
+            auditButton.textContent = 'Scanning...';
+            errorDisplay.textContent = '';
+            resultsDisplay.classList.add('hidden');
+
+            try {
+                const res = await fetch('http://localhost:5000/audit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlInput.value }),
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.details || 'Audit failed on the server.');
+                
+                displayFormattedReport(data);
+
+            } catch (err) {
+                errorDisplay.textContent = `[ERROR] ${err.message}`;
+            } finally {
+                auditButton.disabled = false;
+                auditButton.textContent = 'Execute Audit';
+            }
+        };
+
+        // --- Voice Typing Functionality ---
+        let isListening = false;
+        let socket = null;
+        let audioContext = null;
+        const toggleListening = async () => {
+            if (isListening) { if (socket) socket.close(); return; }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                processor.onaudioprocess = (e) => {
+                    if (socket?.readyState !== WebSocket.OPEN) return;
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const buffer = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) buffer[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                    socket.send(buffer.buffer);
+                };
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                socket = new WebSocket('ws://localhost:5000');
+                socket.onopen = () => { isListening = true; micButton.classList.add('bg-red-600', 'animate-pulse'); };
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.transcript) urlInput.value += (urlInput.value ? ' ' : '') + data.transcript;
+                };
+                socket.onclose = () => {
+                    isListening = false;
+                    micButton.classList.remove('bg-red-600', 'animate-pulse');
+                    stream.getTracks().forEach(track => track.stop());
+                    processor.disconnect();
+                    if (audioContext && audioContext.state !== 'closed') audioContext.close();
+                };
+                socket.onerror = () => { errorDisplay.textContent = '[ERROR] Voice connection failed.'; if (socket) socket.close(); };
+            } catch (err) { errorDisplay.textContent = '[ERROR] Microphone access denied.'; }
+        };
+
+        auditButton.addEventListener('click', runAudit);
+        micButton.addEventListener('click', toggleListening);
+    </script>
+</body>
+</html>
